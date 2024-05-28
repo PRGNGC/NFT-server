@@ -52,18 +52,36 @@ router.get("/api/own/characters", async (req, res) => {
   );
 });
 
-router.get("/api/own/characters/:id", (req, res) => {
-  const passedCharacterId = req.params.id;
+// router.get("/api/own/characters/:id", (req, res) => {
+//   const passedCharacterId = req.params.id;
 
-  const filteredCharacters = characters.find(
-    (character) => character.id === passedCharacterId
-  );
+//   const filteredCharacters = characters.find(
+//     (character) => character.id === passedCharacterId
+//   );
 
-  if (filteredCharacters.length === 0) {
-    return res.status(400).send({ msg: "This character was not found" });
-  }
+//   if (filteredCharacters.length === 0) {
+//     return res.status(400).send({ msg: "This character was not found" });
+//   }
 
-  return res.status(200).send(filteredCharacters);
-});
+//   return res.status(200).send(filteredCharacters);
+// });
+
+router.get("/api/own/characters/add", async (req, res) =>{
+  // const refreshToken = req.headers.cookie.split("=")[1];
+  // const userObj = jwt.verify(refreshToken, "token_refresh");
+  // const userLogin = userObj.login;
+  const userLogin = "login15";
+
+  const { nft } = req.body;
+
+  const user = await User.findOne({ login: userLogin });
+
+  const newCharactersArray = [...user.nfts.characters, nft];
+
+  await User.findOneAndUpdate({"login": userLogin}, { $set: { "nfts.characters" : newCharactersArray } });
+  
+  return res.json("text")
+
+})
 
 export default router;
