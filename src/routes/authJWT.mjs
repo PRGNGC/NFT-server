@@ -8,8 +8,6 @@ const router = new Router();
 router.post("/api/login", async (req, res) => {
   const { login, password } = req.body;
 
-  console.log(getTokens(login));
-
   const user = await User.findOne({ login: login });
 
   if (!user) {
@@ -22,12 +20,15 @@ router.post("/api/login", async (req, res) => {
 
   const { accessToken, refreshToken } = getTokens(login);
 
+  const userObj = jwt.verify(accessToken, process.env.ACCESS_SIGNATURE_SECRET);
+  const expTime = userObj.exp;
+
   res.cookie("refreshToken", refreshToken, {
     maxAge: refreshTokenAge,
     httpOnly: true,
   });
 
-  res.status(200).send({ accessToken });
+  res.status(200).send({ accessToken: accessToken, expiresAt: expTime });
 });
 
 router.post("/api/logout", (req, res) => {
@@ -75,22 +76,24 @@ router.post("/api/signup", async (req, res) => {
   res.status(200).send({ accessToken });
 });
 
-router.get("/api/refresh", (req, res) => {
-  try {
-    const refreshTokenCookie = req.cookies.refreshToken;
-    const verifyRefreshToken = jwt.verify(refreshTokenCookie, "token_refresh");
+// router.get("/api/refresh", (req, res) => {
+//   try {
+//     const refreshTokenCookie = req.cookies.refreshToken;
+//     const isRefreshTokenValid = jwt.verify(refreshTokenCookie, "token_refresh");
 
-    const { accessToken, refreshToken } = getTokens(login);
+//     const { accessToken } = getTokens(login);
 
-    res.cookie("refreshToken", refreshToken, {
-      maxAge: refreshTokenAge,
-      httpOnly: true,
-    });
+//     const accessTokenCred = jwt.verify(accessToken, "token_access");
+//     const expTime = accessTokenCred.exp;
 
-    res.status(200).send({ accessToken });
-  } catch (err) {
-    console.log("error happened");
-  }
-});
+    
+//     res.status(200).send({ accessToken: accessToken, expireAt: expTime});
+//   } catch (err) {
+//     console.log("error happened");
+//     console.log("router.get ~ err:", err)
+//     res.clearCookie("refreshToken");
+//     res.status(400).json({message: "Your session is expired."})
+//   }
+// });
 
 export default router;

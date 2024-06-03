@@ -1,7 +1,8 @@
 import express, { json } from "express";
 import cors from "cors";
 import cookieParser from "cookie-parser";
-
+import * as dotenv from 'dotenv'
+dotenv.config()
 //db
 import mongoose from "mongoose";
 import MongoStore from "connect-mongo";

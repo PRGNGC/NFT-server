@@ -1,21 +1,38 @@
 import { Router } from "express";
-import { query, validationResult } from "express-validator";
 import { User } from "../mongoose/schemas/user.mjs";
 import { Character } from "../mongoose/schemas/characterSchema.mjs";
 import jwt from "jsonwebtoken";
+import { checkTokens } from "../middleware/checkTokens.mjs";
+import { renewTokens } from "../middleware/renewTokens.mjs";
 
 const router = Router();
 
-router.get("/api/own/characters", async (req, res) => {
-  const refreshToken = req.headers.cookie.split("=")[1];
-  const userObj = jwt.verify(refreshToken, "token_refresh");
-  const userId = userObj.login;
+router.get("/api/own/characters", checkTokens, renewTokens, async (req, res) => {
+  console.log("characters");
 
-  const userByLogin = await User.findOne({ login: userId });
-  const characters = userByLogin.nfts.characters;
+  if(res.locals.restart){
+    res.clearCookie("refreshToken");
+    return res.sendStatus(440);
+  }
+
+  if(res.locals.login){
+    return res.sendStatus(401);
+  }
+
+  const accessToken = res.locals.refresh ? res.locals.newAccessToken : req.headers.authorization.split(" ")[1];
+  const refreshToken = res.locals.refresh ? res.locals.newRefreshToken : req.headers.cookie.split("=")[1];
+
+  const accessTokenInfo = jwt.verify(accessToken, process.env.ACCESS_SIGNATURE_SECRET);
+
+  const accessTokenAge = accessTokenInfo.exp;
+
+  const userLogin = accessTokenInfo.login;
+
+  const user = await User.findOne({login: userLogin});
+
+  const charactersOfUser = user.nfts.characters;
+
   const limit = 5;
-
-  console.log();
 
   if (req.query.search) {
     const nextSearchIndex = req.query.nextSearchIndex;
@@ -26,78 +43,172 @@ router.get("/api/own/characters", async (req, res) => {
 
     let charactersWithQuery = [];
 
-    for (let i = nextSearchIndex; i < characters.length; i++) {
+    for (let i = nextSearchIndex; i < charactersOfUser.length; i++) {
       if (charactersWithQuery.length === 5) break;
 
       if (
-        characters[i].nftName.toLowerCase().includes(query.toLowerCase()) &&
+        charactersOfUser[i].nftName.toLowerCase().includes(query.toLowerCase()) &&
         charactersWithQuery.length <= limit - 1
       ) {
-        charactersWithQuery.push(characters[i]);
+        charactersWithQuery.push(charactersOfUser[i]);
         lastIndex = i;
       }
     }
 
+    res.cookie("refreshToken", refreshToken, {
+      maxAge: process.env.REFRESH_TOKEN_TIMESTAMP,
+      httpOnly: true,
+      // sameSite: "strict",
+      // secure: true,
+      // path: '/'
+    });
+
     return res.json({
       nfts: charactersWithQuery,
       nextSearchIndex: lastIndex + 1,
+      accessToken: accessToken,
+      expiresAt: accessTokenAge
     });
   }
 
   const page = req.query.page - 1;
 
-  return res.json(
-    characters.filter(
+  res.cookie("refreshToken", refreshToken, {
+    maxAge: process.env.REFRESH_TOKEN_TIMESTAMP,
+    httpOnly: true,
+    // sameSite: "strict",
+    // secure: true,
+    // path: '/'
+  });
+
+  return res.json({
+
+    nfts: charactersOfUser.filter(
       (_, index) => index >= page * limit && index <= page * limit + limit - 1
-    )
+    ),
+    accessToken: accessToken,
+    expiresAt: accessTokenAge
+  }
+    
   );
 });
 
-// router.get("/api/own/characters/:id", (req, res) => {
-//   const passedCharacterId = req.params.id;
+router.post("/api/own/characters/add", checkTokens, renewTokens, async (req, res) =>{
+  console.log("add")
+  try{
+    if(res.locals.restart){
+      res.clearCookie("refreshToken");
+      return res.sendStatus(440);
+    }
 
-//   const filteredCharacters = characters.find(
-//     (character) => character.id === passedCharacterId
-//   );
+    if(res.locals.login){
+      console.log("login exit");
+      return res.sendStatus(401);
+    }
 
-//   if (filteredCharacters.length === 0) {
-//     return res.status(400).send({ msg: "This character was not found" });
-//   }
+    console.log("out login");
+    const accessToken = res.locals.refresh ? res.locals.newAccessToken : req.headers.authorization.split(" ")[1];
+    const refreshToken = res.locals.refresh ? res.locals.newRefreshToken : req.headers.cookie.split("=")[1];
 
-//   return res.status(200).send(filteredCharacters);
-// });
+    const { nft } = req.body;
 
-router.post("/api/own/characters/add", async (req, res) =>{
-  // const refreshToken = req.headers.cookie.split("=")[1];
-  // const userObj = jwt.verify(refreshToken, "token_refresh");
-  // const userLogin = userObj.login;
+    const accessTokenInfo = jwt.verify(accessToken, process.env.ACCESS_SIGNATURE_SECRET);
+    console.log("limestone");
 
-  const { nft } = req.body;
+    const accessTokenAge = accessTokenInfo.exp;
+
+    const userLogin = accessTokenInfo.login;
+
+    const user = await User.findOne({login: userLogin});
+
+    const nftId = nft.id;
+
+    const nftItem = await Character.findOne({ id: nftId });
+
+    const newNftHistory = [...nftItem.history, {
+      user: `@${user.name.split(" ").join("").toLowerCase()}`,
+      date: `${new Date().getDate() <= 9 ? `0${new Date().getDate()}` : `${new Date().getDate()}`}.
+             ${new Date().getMonth() <= 9 ? `0${new Date().getMonth() + 1}` : `${new Date().getMonth() + 1}`}.
+             ${new Date().getFullYear() <= 9 ? `0${new Date().getFullYear()}` : `${new Date().getFullYear()}`}`,
+      time: `${new Date().getHours() <= 9 ? `0${new Date().getHours()}` : `${new Date().getHours()}`}:
+             ${new Date().getMinutes() <= 9 ? `0${new Date().getMinutes()}` : `${new Date().getMinutes()}`}
+             ${new Date().getHours() >= 12 ? 'pm' : 'am'}`,
+      userAvatar: user.userImg,
+      actionType: "purchased",
+      priceETH: nft.nftEthPrice,
+    }];
+    
+    const newCharactersArray = [...user.nfts.characters, nft];
+    
+    await User.findOneAndUpdate({"login": userLogin}, { $set: { "nfts.characters" : newCharactersArray } });
+    
+    await Character.findOneAndUpdate({"id": nftId}, { $set: { "history" : newNftHistory } });
+    
+    res.cookie("refreshToken", refreshToken, {
+      maxAge: process.env.REFRESH_TOKEN_TIMESTAMP,
+      httpOnly: true,
+      // sameSite: "strict",
+      // secure: true,
+      // path: '/'
+    });
+
+    return res.status(200).send({    
+      accessToken: accessToken,
+      expiresAt: accessTokenAge
+    });
+  } catch(error){
+    console.log("router.post ~ error:", error)
+    return res.sendStatus(500);
+  }
+
+
+
+  // try {  
+    // const { nft } = req.body;
+    // console.log("router.post ~ nft:", nft)
+    
+    // const userLogin = "login15";
+
+    // const nftId = nft.id;
+    // console.log("router.post ~ nftId:", nftId)
+
+    // console.log("test");
+    
+    // const user = await User.findOne({ login: userLogin });
+    // console.log("test2");
+    
+    // const nftItem = await Character.findOne({ id: nftId });
+    // console.log("test3");
+    // const nftItem = await Planet.findOne({ id: nftId });
+    // console.log("router.post ~ nftItem:", nftItem)
+
+    // const newNftHistory = [...nftItem.history, {
+    //   user: `@${user.name.split(" ").join("").toLowerCase()}`,
+    //   date: `${new Date().getDate() <= 9 ? `0${new Date().getDate()}` : `${new Date().getDate()}`}.${new Date().getMonth() <= 9 ? `0${new Date().getMonth()}` : `${new Date().getMonth()}`}.${new Date().getFullYear()}`,
+    //   time: `${new Date().getHours()}:${new Date().getMinutes()}${new Date().getHours() >= 12 ? 'pm' : 'am'}`,
+    //   userAvatar: user.userImg,
+    //   actionType: "purchased",
+    //   priceETH: nft.nftEthPrice,
+    // }];
+
+    // const newCharactersArray = [...user.nfts.characters, nft];
+
+    // console.log("test4");
+    // await User.findOneAndUpdate({"login": userLogin}, { $set: { "nfts.characters" : newCharactersArray } });
+    // console.log("test5");
+
+    // await Planet.findOneAndUpdate({"id": nftId}, { $set: { "history" : newNftHistory } });
+    // await Character.findOneAndUpdate({"id": nftId}, { $set: { "history" : newNftHistory } });
+
+    // console.log('here')
+    // return res.sendStatus(200);
+    // return res.status(200);
+  // } catch (err) {
+  //   console.log("router.post ~ err:", err)
+  //   console.log('here2')
+  //   return res.sendStatus(400);
+  // }
   
-  const userLogin = "login15";
-
-  const nftId = nft.id;
-
-  const user = await User.findOne({ login: userLogin });
-
-  const nftItem = await Character.findOne({ id: nftId });
-
-  const newNftHistory = [...nftItem.history, {
-    user: `@${user.name.split(" ").join("").toLowerCase()}`,
-    date: `${new Date().getDate() <= 9 ? `0${new Date().getDate()}` : `${new Date().getDate()}`}.${new Date().getMonth() <= 9 ? `0${new Date().getMonth()}` : `${new Date().getMonth()}`}.${new Date().getFullYear()}`,
-    time: `${new Date().getHours()}:${new Date().getMinutes()}${new Date().getHours() >= 13 ? 'pm' : 'am'}`,
-    userAvatar: user.userImg,
-    actionType: "purchased",
-    priceETH: nft.nftEthPrice,
-  }];
-
-  const newCharactersArray = [...user.nfts.characters, nft];
-
-  await User.findOneAndUpdate({"login": userLogin}, { $set: { "nfts.characters" : newCharactersArray } });
-
-  await Character.findOneAndUpdate({"id": nftId}, { $set: { "history" : newNftHistory } });
-  
-  return res.json("text")
 
 })
 

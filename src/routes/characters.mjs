@@ -65,7 +65,7 @@ router.get("/api/characters/:id", async (req, res) => {
   );
 
   if (filteredCharacters.length === 0) {
-    return res.status(400).send({ msg: "This character was not found" });
+    return res.status(404).send({ msg: "This character was not found" });
   }
 
   return res.status(200).send(filteredCharacters);

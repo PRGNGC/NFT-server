@@ -1,7 +1,8 @@
 import { Router } from "express";
 import { User } from "../mongoose/schemas/user.mjs";
 import jwt from "jsonwebtoken";
-import { getTokens, refreshTokenAge } from "../utils/getTokens.mjs";
+import { checkTokens } from "../middleware/checkTokens.mjs";
+import { renewTokens } from "../middleware/renewTokens.mjs";
 
 const router = Router();
 //SESSION AUTHENTICATION
@@ -17,74 +18,43 @@ const router = Router();
 // });
 
 //JWT AUTHENTICATION
-router.get("/api/user", async (req, res) => {
-  const accessToken = req.headers.authorization.split(" ")[1];
-  const refreshToken = req.headers.cookie.split("=")[1];
-
+router.get("/api/user", checkTokens, renewTokens, async (req, res) => {
+  console.log("user")
   try {
-    const verifyRefreshToken = jwt.verify(refreshToken, "token_refresh");
-    const refreshTokenTimeLeft =
-      verifyRefreshToken.exp - new Date().getTime() / 1000;
-
-    if (refreshTokenTimeLeft <= 0) {
-      return res
-        .status(401)
-        .send({ msg: "Your session is expired. You need to log in again!" });
+    if(res.locals.restart){
+      res.clearCookie("refreshToken");
+      return res.sendStatus(440);
     }
-
-    console.log("verify refresh token - " + verifyRefreshToken.login);
-    if (
-      accessToken === "null" ||
-      accessToken.exp - new Date().getTime() / 1000 > 0
-    ) {
-      const { accessToken, refreshToken } = getTokens(verifyRefreshToken.login);
-
-      // console.log("New access token - " + accessToken);
-      // console.log("New refresh token - " + refreshToken);
-
-      const user = await User.findOne({ login: verifyRefreshToken.login });
-      // console.log("user - ", user);
-      // console.log("name2 - ", user.name);
-      // console.log("userImg2 - ", user.userImg);
-      // console.log("userId2 - ", user.userId);
-      // console.log("cover2 - ", user.cover);
-      // console.log("c2 - ", user.c);
-      res.cookie("refreshToken", refreshToken, {
-        maxAge: refreshTokenAge,
-        httpOnly: true,
-      });
-      return res.status(200).send({
-        user,
-        // user: {
-        //   name: user.name,
-        //   userImg: user.userImg,
-        //   userId: user.userId,
-        //   cover: user.cover,
-        // },
-        accessToken: accessToken,
-      });
+    if(res.locals.login){
+      return res.sendStatus(401);
     }
+    const accessToken = res.locals.refresh ? res.locals.newAccessToken : req.headers.authorization.split(" ")[1];
+    const refreshToken = res.locals.refresh ? res.locals.newRefreshToken : req.headers.cookie.split("=")[1];
+    
+    const accessTokenInfo = jwt.verify(accessToken, process.env.ACCESS_SIGNATURE_SECRET);
 
-    const verifyAccessToken = jwt.verify(accessToken, "token_access");
-    const user = await User.findOne({ login: verifyAccessToken.login });
-    // console.log("user - ", user);
-    // console.log("name1 - ", user.name);
-    // console.log("userImg1 - ", user.userImg);
-    // console.log("userId1 - ", user.userId);
-    // console.log("cover1 - ", user.cover);
-    // console.log("c1 - ", user.c);
-    return res.status(200).send({
+    const accessTokenAge = accessTokenInfo.exp;
+
+    const userLogin = accessTokenInfo.login;
+
+    const user = await User.findOne({ login: userLogin });
+
+    res.cookie("refreshToken", refreshToken, {
+      maxAge: process.env.REFRESH_TOKEN_TIMESTAMP,
+      httpOnly: true,
+      // sameSite: "strict",
+      // secure: true,
+      // path: '/'
+    });
+    
+    return res.status(200).json({ 
       user,
-      // user: {
-      //   name: user.name,
-      //   userImg: user.userImg,
-      //   userId: user.userId,
-      //   cover: user.cover,
-      // },
+      accessToken: accessToken,
+      expiresAt: accessTokenAge
     });
   } catch (err) {
-    console.log(err);
-    return res.status(200).send({ msg: err });
+    console.log("router.get ~ err:", err)
+    return res.sendStatus(500);
   }
 });
 
