@@ -2,6 +2,9 @@ import { Router } from "express";
 import { User } from "../mongoose/schemas/user.mjs";
 import { getTokens, refreshTokenAge } from "../utils/getTokens.mjs";
 import jwt from "jsonwebtoken";
+import { avatarBuffer, coverBuffer } from "../utils/bufferImgs.mjs";
+// console.log("coverBuffer:", coverBuffer)
+// console.log("avatarBuffer:", avatarBuffer)
 
 const router = new Router();
 
@@ -32,19 +35,13 @@ router.post("/api/login", async (req, res) => {
 });
 
 router.post("/api/logout", (req, res) => {
-  const { accessToken } = req.body;
-  try {
-    // const verifyToken = jwt.verify(accessToken, "token_access");
     res.clearCookie("refreshToken");
-    return res.status(200).send({ msg: "You are logged out" });
-  } catch (err) {
-    console.log("logout error happened");
-    return res.status(200).send({ msg: "Error happened" });
-  }
+    return res.sendStatus(200);
 });
 
 router.post("/api/signup", async (req, res) => {
   const { login, password, name } = req.body;
+  console.log("in")
 
   const isSuchLoginExists = await User.findOne({ login: login });
   if (isSuchLoginExists) {
@@ -54,10 +51,35 @@ router.post("/api/signup", async (req, res) => {
   const newUser = await User({
     login: login,
     password: password,
+    // cover: "/images/cover.png",
+    // userImg: "/images/label.png",
+    // cover: Buffer.from(`${process.env.DEFAULT_COVER}`, "base64"),
+    // userImg: Buffer.from(`${process.env.DEFAULT_AVATAR}`, "base64"),
+    // cover: Buffer.from(coverBuffer, "base64"),
+    // userImg: Buffer.from(avatarBuffer, "base64"),
+    cover: coverBuffer,
+    userImg: avatarBuffer,
+    userId: "456",
     name: name,
-    userImg: "http://localhost:4000/images/img.png",
+    username: `@${name.toLowerCase().split(" ").join("")}`,
+    // cover: {
+    //   fieldname: "defaultCover",
+    //   originalname: "cover.png",
+    //   encoding: "7bit",
+    //   mimetype: "image/png",
+    //   buffer: Buffer.from(`${process.env.DEFAULT_COVER}`, 'base64'),
+    //   size: 206608
+    //   },
+    // userImg: {
+    //   fieldname: "defaultAvatar",
+    //   originalname: "label.png",
+    //   encoding: "7bit",
+    //   mimetype: "image/png",
+    //   buffer: Buffer.from(`${process.env.DEFAULT_COVER}`, 'base64'),
+    //   size: 45389
+    // },
     nfts: {
-      characters: [],
+      characters: [], 
       planets: [],
       items: [],
       bundles: [],

@@ -17,7 +17,7 @@ router.get("/api/own/characters", checkTokens, renewTokens, async (req, res) => 
 
   if(res.locals.login){
     return res.sendStatus(401);
-  }
+  } 
 
   const accessToken = res.locals.refresh ? res.locals.newAccessToken : req.headers.authorization.split(" ")[1];
   const refreshToken = res.locals.refresh ? res.locals.newRefreshToken : req.headers.cookie.split("=")[1];

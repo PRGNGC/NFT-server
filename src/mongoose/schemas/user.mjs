@@ -8,8 +8,10 @@ const UserSchema = new mongoose.Schema({
   },
   password: { type: mongoose.Schema.Types.String, required: true },
   name: { type: mongoose.Schema.Types.String, required: true },
-  name: { type: mongoose.Schema.Types.String, required: true },
+  username: { type: mongoose.Schema.Types.String, required: true },
+  userId: { type: mongoose.Schema.Types.String, required: true },
   userImg: { type: mongoose.Schema.Types.String, required: true },
+  cover: { type: mongoose.Schema.Types.String, required: true },
   nfts: { type: mongoose.Schema.Types.Mixed, required: true },
 });
 
